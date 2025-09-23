@@ -1,11 +1,11 @@
 import express from 'express';
-import routes from './routes/index';
+import router from './routes/index';
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-app.use('/', routes);
+app.use(router);
 
 app.listen(port, () => {
-  console.log(`App listening on port ${port}`);
+  console.log(`Router listening on port ${port}`);
 });

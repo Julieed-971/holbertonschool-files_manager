@@ -7,7 +7,6 @@ const getStatus = (req, res) => {
   if (isRedisAlive && isDbAlive) {
     return res.status(200).json({ redis: isRedisAlive, db: isDbAlive });
   }
-  return res.status(404).json({ redis: isRedisAlive, db: isDbAlive });
 };
 
 const getStats = async (req, res) => {
@@ -17,7 +16,6 @@ const getStats = async (req, res) => {
   if (nbUsers && nbFiles) {
     return res.status(200).json({ users: nbUsers, files: nbFiles });
   }
-  return res.status(404).json({ users: nbUsers, files: nbFiles });
 };
 
 export default { getStatus, getStats };

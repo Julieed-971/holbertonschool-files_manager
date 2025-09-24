@@ -13,6 +13,9 @@ const getConnect = async (req, res) => {
     const email = userCredentials[0];
     const password = userCredentials[1];
 
+    if (!email || !password) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
     const hashedPassword = sha1(password);
     const isRegisteredUser = await dbClient.db.collection('users').findOne({ email });
     if (!isRegisteredUser) {

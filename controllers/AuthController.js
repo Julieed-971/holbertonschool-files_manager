@@ -7,7 +7,7 @@ const getConnect = async (req, res) => {
   try {
     const authorizationHeader = req.headers.authorization;
     if (!authorizationHeader || !authorizationHeader.startsWith('Basic ')) {
-      return res.status(401).set('WWW-Authenticate', 'Basic').json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'Unauthorized' });
     }
     const userCredentials = Buffer.from(authorizationHeader.split(' ')[1], 'base64').toString('utf-8').split(':');
     const email = userCredentials[0];
@@ -16,11 +16,11 @@ const getConnect = async (req, res) => {
     const hashedPassword = sha1(password);
     const isRegisteredUser = await dbClient.db.collection('users').findOne({ email });
     if (!isRegisteredUser) {
-      return res.status(401).set('WWW-Authenticate', 'Basic').json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'Unauthorized' });
     }
     const isPasswordCorrect = hashedPassword === isRegisteredUser.password ? true : null;
     if (!isPasswordCorrect) {
-      return res.status(401).set('WWW-Authenticate', 'Basic').json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'Unauthorized' });
     }
     const randToken = uuidv4();
     const userId = isRegisteredUser._id;

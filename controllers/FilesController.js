@@ -4,15 +4,19 @@ import { ObjectId } from 'mongodb';
 import redisClient from '../utils/redis';
 import dbClient from '../utils/db';
 
-const postUpload = async (req, res) => {
+const getAuthenticatedUserId = async (req) => {
   const xToken = req.headers['x-token'];
   if (!xToken) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return null;
   }
   const redisKey = `auth_${xToken}`;
-  const currentConnectedUser = await redisClient.get(redisKey);
+  const userId = await redisClient.get(redisKey);
+  return userId || null;
+};
 
-  if (!currentConnectedUser) {
+const postUpload = async (req, res) => {
+  const currentConnectedUserId = await getAuthenticatedUserId(req);
+  if (!currentConnectedUserId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -39,18 +43,17 @@ const postUpload = async (req, res) => {
       return res.status(400).json({ error: 'Missing data' });
     }
 
-    const parentIdQuery = parentId === 0 ? 0 : ObjectId(parentId);
     const newFile = {
-      userId: ObjectId(currentConnectedUser),
+      userId: ObjectId(currentConnectedUserId),
       name,
       type,
       isPublic,
-      parentId: parentIdQuery,
+      parentId: parentId === 0 ? 0 : ObjectId(parentId),
       localPath: null,
     };
 
     if (parentId !== 0) {
-      const filePresentInDb = await files.findOne({ _id: parentIdQuery });
+      const filePresentInDb = await files.findOne({ _id: ObjectId(parentId) });
       if (!filePresentInDb) {
         return res.status(400).json({ error: 'Parent not found' });
       }
@@ -62,8 +65,8 @@ const postUpload = async (req, res) => {
     if (type === 'folder') {
       const insertedFile = await files.insertOne(newFile);
       return res.status(201).json({
-        id: insertedFile.insertedId,
-        userId: newFile.userId,
+        id: insertedFile.insertedId.toString(),
+        userId: newFile.userId.toString(),
         name: newFile.name,
         type: newFile.type,
         isPublic: newFile.isPublic,
@@ -84,8 +87,8 @@ const postUpload = async (req, res) => {
       newFile.localPath = localPath;
       const insertedFile = await files.insertOne(newFile);
       return res.status(201).json({
-        id: insertedFile.insertedId,
-        userId: newFile.userId,
+        id: insertedFile.insertedId.toString(),
+        userId: newFile.userId.toString(),
         name: newFile.name,
         type: newFile.type,
         isPublic: newFile.isPublic,
@@ -99,4 +102,78 @@ const postUpload = async (req, res) => {
   }
 };
 
-export default { postUpload };
+const getShow = async (req, res) => {
+  const currentConnectedUserId = await getAuthenticatedUserId(req);
+  if (!currentConnectedUserId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  let userFile;
+  try {
+    const fileId = ObjectId(req.params.id);
+    const query = {
+      _id: fileId,
+      userId: ObjectId(currentConnectedUserId),
+    };
+
+    const files = dbClient.db.collection('files');
+    userFile = await files.findOne(query);
+    if (!userFile) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    return res.status(200).json({
+      id: userFile._id.toString(),
+      userId: userFile.userId.toString(),
+      name: userFile.name,
+      type: userFile.type,
+      isPublic: userFile.isPublic,
+      parentId: userFile.parentId === '0' || userFile.parentId === 0
+        ? 0
+        : userFile.parentId.toString(),
+    });
+  } catch (err) {
+    console.error(`Could not get user file in database: ${err}`);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+const getIndex = async (req, res) => {
+  const currentConnectedUserId = await getAuthenticatedUserId(req);
+  if (!currentConnectedUserId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const parentIdQuery = req.query.parentId || '0';
+  const page = parseInt(req.query.page, 10) || 0;
+
+  try {
+    const files = dbClient.db.collection('files');
+    const pipeline = [
+      {
+        $match: {
+          userId: ObjectId(currentConnectedUserId),
+          parentId: parentIdQuery === '0' ? 0 : ObjectId(parentIdQuery),
+        },
+      },
+      { $skip: page * 20 },
+      { $limit: 20 },
+    ];
+
+    const userFiles = await files.aggregate(pipeline).toArray();
+
+    const result = userFiles.map((doc) => ({
+      id: doc._id.toString(),
+      userId: doc.userId.toString(),
+      name: doc.name,
+      type: doc.type,
+      isPublic: doc.isPublic,
+      parentId: doc.parentId === 0 ? 0 : doc.parentId.toString(),
+    }));
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error(`Could not get user files in database: ${err}`);
+    return res.status(500).json([]);
+  }
+};
+
+export default { postUpload, getShow, getIndex };

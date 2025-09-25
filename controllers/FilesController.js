@@ -21,7 +21,7 @@ const postUpload = async (req, res) => {
   }
 
   try {
-    const files = dbClient.db.collection('files');
+    const filesCollection = dbClient.db.collection('files');
     const {
       name,
       type,
@@ -53,7 +53,7 @@ const postUpload = async (req, res) => {
     };
 
     if (parentId !== 0) {
-      const filePresentInDb = await files.findOne({ _id: ObjectId(parentId) });
+      const filePresentInDb = await filesCollection.findOne({ _id: ObjectId(parentId) });
       if (!filePresentInDb) {
         return res.status(400).json({ error: 'Parent not found' });
       }
@@ -63,7 +63,7 @@ const postUpload = async (req, res) => {
     }
 
     if (type === 'folder') {
-      const insertedFile = await files.insertOne(newFile);
+      const insertedFile = await filesCollection.insertOne(newFile);
       return res.status(201).json({
         id: insertedFile.insertedId.toString(),
         userId: newFile.userId.toString(),
@@ -85,7 +85,7 @@ const postUpload = async (req, res) => {
       fs.writeFileSync(localPath, buffer);
 
       newFile.localPath = localPath;
-      const insertedFile = await files.insertOne(newFile);
+      const insertedFile = await filesCollection.insertOne(newFile);
       return res.status(201).json({
         id: insertedFile.insertedId.toString(),
         userId: newFile.userId.toString(),
@@ -116,8 +116,8 @@ const getShow = async (req, res) => {
       userId: ObjectId(currentConnectedUserId),
     };
 
-    const files = dbClient.db.collection('files');
-    userFile = await files.findOne(query);
+    const filesCollection = dbClient.db.collection('files');
+    userFile = await filesCollection.findOne(query);
     if (!userFile) {
       return res.status(404).json({ error: 'Not found' });
     }
@@ -147,7 +147,7 @@ const getIndex = async (req, res) => {
   const page = parseInt(req.query.page, 10) || 0;
 
   try {
-    const files = dbClient.db.collection('files');
+    const filesCollection = dbClient.db.collection('files');
     const pipeline = [
       {
         $match: {
@@ -159,7 +159,7 @@ const getIndex = async (req, res) => {
       { $limit: 20 },
     ];
 
-    const userFiles = await files.aggregate(pipeline).toArray();
+    const userFiles = await filesCollection.aggregate(pipeline).toArray();
 
     const result = userFiles.map((doc) => ({
       id: doc._id.toString(),
@@ -176,4 +176,98 @@ const getIndex = async (req, res) => {
   }
 };
 
-export default { postUpload, getShow, getIndex };
+const putPublish = async (req, res) => {
+  const currentConnectedUserId = await getAuthenticatedUserId(req);
+  if (!currentConnectedUserId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const parameterDocId = ObjectId(req.params.id);
+    const userId = ObjectId(currentConnectedUserId);
+    const filesCollection = dbClient.db.collection('files');
+
+    const file = await filesCollection.findOne({
+      _id: parameterDocId,
+      userId,
+    });
+
+    if (!file) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    await filesCollection.updateOne(
+      { _id: parameterDocId, userId },
+      { $set: { isPublic: true } },
+    );
+
+    const updatedFile = await filesCollection.findOne({
+      _id: parameterDocId,
+      userId,
+    });
+
+    return res.status(200).json({
+      id: updatedFile._id.toString(),
+      userId: updatedFile.userId.toString(),
+      name: updatedFile.name,
+      type: updatedFile.type,
+      isPublic: updatedFile.isPublic,
+      parentId: updatedFile.parentId === '0' || updatedFile.parentId === 0
+        ? 0
+        : updatedFile.parentId.toString(),
+    });
+  } catch (err) {
+    console.error(`Could not publish file: ${err}`);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+const putUnpublish = async (req, res) => {
+  const currentConnectedUserId = await getAuthenticatedUserId(req);
+  if (!currentConnectedUserId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const parameterDocId = ObjectId(req.params.id);
+    const userId = ObjectId(currentConnectedUserId);
+    const filesCollection = dbClient.db.collection('files');
+
+    const file = await filesCollection.findOne({
+      _id: parameterDocId,
+      userId,
+    });
+
+    if (!file) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    await filesCollection.updateOne(
+      { _id: parameterDocId, userId },
+      { $set: { isPublic: false } },
+    );
+
+    const updatedFile = await filesCollection.findOne({
+      _id: parameterDocId,
+      userId,
+    });
+
+    return res.status(200).json({
+      id: updatedFile._id.toString(),
+      userId: updatedFile.userId.toString(),
+      name: updatedFile.name,
+      type: updatedFile.type,
+      isPublic: updatedFile.isPublic,
+      parentId: updatedFile.parentId === '0' || updatedFile.parentId === 0
+        ? 0
+        : updatedFile.parentId.toString(),
+    });
+  } catch (err) {
+    console.error(`Could not unpublish file: ${err}`);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export default {
+  postUpload, getShow, getIndex, putPublish, putUnpublish,
+};

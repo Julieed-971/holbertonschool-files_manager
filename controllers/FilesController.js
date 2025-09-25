@@ -152,7 +152,7 @@ const getIndex = async (req, res) => {
       {
         $match: {
           userId: ObjectId(currentConnectedUserId),
-          parentId: parentIdQuery === '0' ? 0 : ObjectId(parentIdQuery),
+          parentId: parentIdQuery === '0' || parentIdQuery === 0 ? 0 : ObjectId(parentIdQuery),
         },
       },
       { $skip: page * 20 },
@@ -167,7 +167,7 @@ const getIndex = async (req, res) => {
       name: doc.name,
       type: doc.type,
       isPublic: doc.isPublic,
-      parentId: doc.parentId === 0 ? 0 : doc.parentId.toString(),
+      parentId: doc.parentId === 0 || doc.parentId === '0' ? 0 : doc.parentId.toString(),
     }));
     return res.status(200).json(result);
   } catch (err) {
